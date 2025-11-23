@@ -1,0 +1,88 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <base target="_top">
+  <style>
+    body { font-family: 'Roboto Mono', monospace; background-color: #282c34; color: #abb2bf; font-size: 14px; margin: 0; padding: 20px 20px 80px 20px; }
+    #log-container { white-space: pre-wrap; word-wrap: break-word; }
+    .log-entry { margin-bottom: 5px; }
+    .status-ok { color: #98c379; }
+    .status-andamento { color: #61afef; }
+    .status-erro { color: #e06c75; font-weight: bold; }
+    .status-final { color: #c678dd; font-weight: bold; margin-top: 15px; border-top: 1px solid #444; padding-top: 15px; }
+    #footer { position: fixed; bottom: 0; left: 0; width: 100%; text-align: right; padding: 15px 20px; background-color: #282c34; border-top: 1px solid #333; box-sizing: border-box; }
+    button { background-color: #61afef; color: white; border: none; padding: 8px 15px; border-radius: 4px; cursor: pointer; }
+    button:disabled { background-color: #555; cursor: not-allowed; }
+  </style>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Roboto+Mono&display=swap" rel="stylesheet">
+</head>
+<body>
+
+  <div id="log-container">
+    <div class="log-entry status-andamento">[INICIANDO] Aguardando início do processo no servidor...</div>
+  </div>
+
+  <div id="footer">
+    <button id="close-button" onclick="google.script.host.close()" disabled>Fechar</button>
+  </div>
+
+  <script>
+    let poller;
+    let lastStatus = '';
+
+    function checkForUpdates() {
+      google.script.run
+        .withSuccessHandler(status => {
+          if (status && status !== lastStatus) {
+            appendLog(status);
+            lastStatus = status;
+          }
+        })
+        .withFailureHandler(err => {
+          appendLog('[ERRO] Falha ao obter status: ' + (err && err.message ? err.message : err));
+        })
+        .obterStatusDaExportacao();
+    }
+
+    function appendLog(message, isFinal = false) {
+      const container = document.getElementById('log-container');
+      const entry = document.createElement('div');
+      entry.className = 'log-entry';
+
+      const msg = String(message || '').trim();
+      if (msg.includes('[OK]')) entry.classList.add('status-ok');
+      else if (msg.includes('[ERRO]') || msg.includes('[FALHA]')) entry.classList.add('status-erro');
+      else if (msg.includes('[EM ANDAMENTO]') || msg.includes('[INICIANDO]')) entry.classList.add('status-andamento');
+      if (isFinal) entry.classList.add('status-final');
+
+      entry.textContent = msg;
+      container.appendChild(entry);
+      window.scrollTo(0, document.body.scrollHeight);
+    }
+
+    function onProcessSuccess(finalMessage) {
+      if (poller) { clearInterval(poller); poller = null; }
+      appendLog('✅ ' + finalMessage, true);
+      document.getElementById('close-button').disabled = false;
+    }
+
+    function onProcessFailure(error) {
+      if (poller) { clearInterval(poller); poller = null; }
+      const msg = (error && error.message) ? error.message : String(error);
+      appendLog('[ERRO FATAL] ' + msg, true);
+      document.getElementById('close-button').disabled = false;
+    }
+
+    document.addEventListener('DOMContentLoaded', () => {
+      poller = setInterval(checkForUpdates, 750);
+      google.script.run
+        .withSuccessHandler(onProcessSuccess)
+        .withFailureHandler(onProcessFailure)
+        .executarExportacaoManual();
+    });
+  </script>
+
+</body>
+</html>
