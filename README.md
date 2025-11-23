@@ -84,4 +84,4 @@ Para garantir que o arquivo final funcione no Omie e mantenha as fórmulas auxil
 
 ---
 
-**Autor:** [Seu Nome]
+**Autor:** Higor Piccirilli e IA
