@@ -74,8 +74,8 @@
     }
 
     document.addEventListener('DOMContentLoaded', () => {
-      // polling de 750 ms
-      poller = setInterval(checkForUpdates, 750);
+      // polling de 1250 ms
+      poller = setInterval(checkForUpdates, 1250);
       // dispara a atualização com log
       google.script.run
         .withSuccessHandler(onProcessSuccess)
