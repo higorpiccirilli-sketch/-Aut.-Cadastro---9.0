@@ -1,0 +1,113 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
+    <style>
+      body { font-family: 'Roboto', sans-serif; background: #f4f6f8; color: #333; margin: 0; padding: 20px; }
+      h2 { font-size: 18px; color: #1a73e8; margin-top: 0; }
+      .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
+      .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 13px; }
+      .btn-copy { background: #e8f0fe; color: #1a73e8; }
+      .btn-copy:hover { background: #d2e3fc; }
+      .btn-submit { background: #1a73e8; color: white; width: 100%; padding: 12px; font-size: 14px; margin-top: 20px; }
+      .btn-submit:hover { background: #1557b0; }
+      
+      .item-card { background: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; }
+      .item-info { flex: 1; }
+      .sku { font-weight: bold; color: #5f6368; font-size: 12px; }
+      .nome { font-size: 14px; margin-top: 2px; }
+      .input-tema { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px; font-size: 14px; }
+      .loading { text-align: center; color: #666; margin-top: 50px; display: none; }
+    </style>
+  </head>
+  <body>
+
+    <div id="main-content">
+      <div class="header-actions">
+        <h2>Definir Características</h2>
+        <button type="button" class="btn btn-copy" onclick="copiarPrimeiroTema()">⬇️ Copiar 1º Tema p/ todos</button>
+      </div>
+
+      <form id="form-caracteristicas">
+        <div id="lista-itens"></div>
+        <button type="submit" class="btn btn-submit">✅ Gerar Arquivo</button>
+      </form>
+    </div>
+
+    <div id="loading-view" class="loading">
+      <p>⏳ Processando... Por favor, aguarde.</p>
+    </div>
+
+    <script>
+      // === CORREÇÃO AQUI ===
+      // Recebe o array diretamente, sem JSON.parse extra
+      const dadosIniciais = <?!= dadosIniciais ?>;
+
+      function renderizarItens() {
+        const container = document.getElementById('lista-itens');
+        let html = '';
+        
+        // Verificação de segurança caso venha vazio
+        if (!dadosIniciais || dadosIniciais.length === 0) {
+          container.innerHTML = '<p style="text-align:center; color:red;">Nenhum dado recebido. Verifique se selecionou a Coluna H.</p>';
+          return;
+        }
+
+        dadosIniciais.forEach((item, index) => {
+          html += `
+            <div class="item-card">
+              <div class="item-info">
+                <div class="sku">${item.sku || 'SKU N/D'}</div>
+                <div class="nome">${item.nome || 'Nome N/D'}</div>
+              </div>
+              <input type="text" 
+                     name="tema_${index}" 
+                     class="input-tema" 
+                     placeholder="Tema (Opcional)"
+                     data-index="${index}">
+            </div>
+          `;
+        });
+        container.innerHTML = html;
+      }
+
+      function copiarPrimeiroTema() {
+        const inputs = document.querySelectorAll('.input-tema');
+        if (inputs.length > 0) {
+          const valor = inputs[0].value;
+          inputs.forEach(input => input.value = valor);
+        }
+      }
+
+      document.getElementById('form-caracteristicas').addEventListener('submit', function(e) {
+        e.preventDefault();
+        
+        const inputs = document.querySelectorAll('.input-tema');
+        const dadosFinais = dadosIniciais.map((item, index) => {
+          return {
+            sku: item.sku,
+            nome: item.nome,
+            tema: inputs[index].value
+          };
+        });
+
+        document.getElementById('main-content').style.display = 'none';
+        document.getElementById('loading-view').style.display = 'block';
+
+        google.script.run
+          .withSuccessHandler((msg) => {
+            google.script.host.close();
+          })
+          .withFailureHandler((err) => {
+            alert('Erro: ' + err.message);
+            document.getElementById('main-content').style.display = 'block';
+            document.getElementById('loading-view').style.display = 'none';
+          })
+          .processarGeracaoCaracteristicasDoFrontend(dadosFinais);
+      });
+
+      renderizarItens();
+    </script>
+  </body>
+</html>
