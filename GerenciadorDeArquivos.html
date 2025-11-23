@@ -1,0 +1,99 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <meta charset="UTF-8">
+    <title>Gerenciador de Arquivos Exportados</title>
+    <style>
+      :root{
+        --bg:#1f232a; --panel:#282c34; --text:#cfd6df; --muted:#9aa4b2; --border:#353b45;
+        --accent:#61afef; --accent-warm:#f39c12; --radius:12px; --shadow:0 6px 20px rgba(0,0,0,.25);
+      }
+      html,body{height:100%}
+      body{font-family:Arial,Helvetica,sans-serif;background:var(--bg);color:var(--text);margin:0;padding:16px;}
+      h1{margin:0 0 14px;font-size:18px;letter-spacing:.2px;display:flex;align-items:center;gap:10px;justify-content:center;}
+      h1::before{content:"🗂️";display:inline-flex;width:28px;height:28px;align-items:center;justify-content:center;border-radius:6px;background:#2d3542;color:var(--accent);box-shadow:0 0 0 1px var(--border) inset;}
+      .section{background:var(--panel);border:1px solid var(--border);border-radius:var(--radius);padding:14px;box-shadow:var(--shadow);margin-bottom:14px;}
+      .section>h2{margin:0 0 12px;padding-bottom:10px;border-bottom:1px dashed var(--border);color:var(--accent);font-size:16px;}
+      .btn{border:none;border-radius:10px;padding:10px 14px;font-weight:700;cursor:pointer;transition:filter .15s ease,transform .02s ease-in;box-shadow:var(--shadow);text-decoration:none;display:inline-block;}
+      .btn:active{transform:translateY(1px)} .btn-secondary{background:#3b4352;color:#e5eaf1} .btn:hover{filter:brightness(1.05)}
+      .folder-links{display:flex;gap:12px;justify-content:center;flex-wrap:wrap}
+      #recent-files-list{list-style:none;padding:0;margin:0}
+      #recent-files-list li{background:rgba(255,255,255,.02);border:1px solid var(--border);border-radius:10px;padding:10px 12px;margin-bottom:8px;display:flex;align-items:center;gap:10px;transition:background .15s ease,border-color .15s ease;}
+      #recent-files-list li:hover{background:rgba(255,255,255,.04);border-color:#404757}
+      #recent-files-list a{text-decoration:none;color:var(--text);font-size:14px}
+      .file-icon{font-size:18px}.loading-text{color:var(--muted);text-align:center}
+      .meta{font-size:12px;color:var(--muted);margin-left:8px}
+    </style>
+  </head>
+  <body>
+    <h1>Gerenciador de Arquivos Exportados</h1>
+
+    <div class="section">
+      <h2>Acesso Rápido às Pastas</h2>
+      <div class="folder-links" id="folder-links">
+        <p class="loading-text">Carregando links...</p>
+      </div>
+    </div>
+
+    <div class="section">
+      <h2>Últimos Arquivos Gerados</h2>
+      <ul id="recent-files-list">
+        <li class="loading-text">Carregando arquivos recentes...</li>
+      </ul>
+    </div>
+
+    <script>
+      function showError(msg){
+        document.getElementById('folder-links').innerHTML = `<p class="loading-text">Erro: ${msg}</p>`;
+        document.getElementById('recent-files-list').innerHTML = '';
+      }
+
+      function popularGerenciador(dados){
+        const folderContainer = document.getElementById('folder-links');
+        const fileList = document.getElementById('recent-files-list');
+
+        if(!dados || typeof dados !== 'object'){ showError('Resposta vazia do servidor.'); return; }
+        if(dados.error){ showError(dados.error); }
+
+        const lp = dados.linksPastas || {};
+        folderContainer.innerHTML = `
+          <a class="btn btn-secondary" href="${lp.petiko || '#'}" target="_blank">📂 Petiko</a>
+          <a class="btn btn-secondary" href="${lp.innova || '#'}" target="_blank">📂 Innova</a>
+          <a class="btn btn-secondary" href="${lp.paws   || '#'}" target="_blank">📂 Paws</a>
+        `;
+
+        const lista = Array.isArray(dados.arquivosRecentes) ? dados.arquivosRecentes : [];
+        if(lista.length === 0){
+          fileList.innerHTML = '<li class="loading-text">Nenhum arquivo recente encontrado.</li>';
+          return;
+        }
+
+        fileList.innerHTML = lista.map(file => {
+          const url = file.url;
+          const nome = file.nome;
+          const dl = file.downloadUrl;
+          const ts = file.timestamp || '';
+          return `
+            <li>
+              <span class="file-icon">📄</span>
+              <div style="display:flex;flex-direction:column;gap:2px;min-width:0;">
+                <a href="${url}" target="_blank" title="${nome.replace(/"/g,'&quot;')}">${nome}</a>
+                <span class="meta">${ts}</span>
+              </div>
+              <a href="${dl}" target="_blank" title="Baixar .xlsx" style="margin-left:auto;text-decoration:none;">⬇️</a>
+            </li>
+          `;
+        }).join('');
+      }
+
+      document.addEventListener('DOMContentLoaded', function(){
+        // chamada única ao backend
+        google.script.run
+          .withSuccessHandler(popularGerenciador)
+          .withFailureHandler(err => showError(err && err.message ? err.message : String(err)))
+          .obterDadosGerenciador();
+      });
+    </script>
+  </body>
+</html>
