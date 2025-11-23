@@ -1,112 +1,54 @@
 /***********************************************************************************************************************************
- *
- * NOME DO ARQUIVO: Sincronizacao.gs
- *
+ * ARQUIVO: Sincronizacao.gs
  ***********************************************************************************************************************************/
 
-/**
- * @scriptName Lógica de Sincronização de Dados (manual)
- * @version 1.0 enxuto
- * @description
- * Lê a planilha de origem (CONFIG.URL_ORIGEM) e sincroniza com a aba "Cadastro Petiko":
- * - Adiciona produtos novos (A:SKU, B:Nome, C:NCM, D:GTIN) — não escreve F/G.
- * - Atualiza dados faltantes (SKU/NCM/GTIN) de produtos já existentes.
- *
- * Observações:
- * - NÃO grava nada em A2/B2/C2 (ou A3/B3/C3).
- * - NÃO toca em F (Cadastro Manual) nem G (Reservado/Características).
- * - “Indústria” (coluna E) fica a critério do usuário (não é alterada aqui).
- *
- * Dependências:
- * - CONFIG (Config.gs)
- * - Utilitarios.gs: _encontrarUltimaLinhaNaColuna, _atualizarPainel
- * - Serviços do Google: SpreadsheetApp
- */
-
-// =================================================================================
-// Bloco 1: Wrappers (entrada manual)
-// =================================================================================
-
-/**
- * Ponto de entrada para a sincronização manual.
- * Exibe confirmação e um resumo ao final.
- */
 function importarDadosEConsultarAbas() {
   const ui = SpreadsheetApp.getUi();
   const resp = ui.alert(
-    'Confirmação de Execução',
-    'Deseja iniciar a sincronização de produtos? (Isso irá adicionar novos e atualizar os incompletos)',
+    'Sincronização de Produtos',
+    'Deseja buscar novos produtos e atualizar dados faltantes da planilha de origem?',
     ui.ButtonSet.YES_NO
   );
-  if (resp !== ui.Button.YES) {
-    ui.alert('A execução foi cancelada pelo usuário.');
-    return;
-  }
+  if (resp !== ui.Button.YES) return;
 
   try {
-    const resumo = _executarLogicaDeSincronizacao();
-    const msg =
-      'Sincronização Concluída!\n\n' +
-      `- Produtos Novos Adicionados: ${resumo.adicionados}\n` +
-      `- Produtos Existentes Atualizados: ${resumo.atualizados}`;
-
-    // Atualiza o painel
-    _atualizarPainel('Sucesso ✅', `Sincronização: ${resumo.adicionados} novo(s), ${resumo.atualizados} atualizado(s).`);
-
+    _atualizarPainel('Em Andamento ⏳', 'Lendo dados da origem...');
+    const resumo = _executarLogicaDeSincronizacaoOtimizada();
+    
+    const msg = `Sincronização Concluída!\n\n🆕 Novos adicionados: ${resumo.adicionados}\n🔄 Existentes atualizados: ${resumo.atualizados}`;
+    _atualizarPainel('Sucesso ✅', msg);
     ui.alert(msg);
+    
   } catch (e) {
-    // Atualiza o painel com erro
-    _atualizarPainel('Erro ❌', e && e.message ? e.message : String(e));
-    ui.alert(`Ocorreu um erro durante a execução: ${e.name} - ${e.message}`);
+    _atualizarPainel('Erro ❌', e.message);
+    ui.alert('Erro: ' + e.message);
   }
 }
 
-// =================================================================================
-/**
- * Faz a sincronização com base nos nomes listados em ABAS_ORIGEM.ACOMPANHAMENTO.
- * @returns {{adicionados:number, atualizados:number}}
- */
-function _executarLogicaDeSincronizacao() {
-  // Abre planilha de origem e destino
-  const planilhaOrigem = SpreadsheetApp.openByUrl(CONFIG.URL_ORIGEM);
-  const planilhaDestino = SpreadsheetApp.getActiveSpreadsheet();
-  const abaInfo = planilhaDestino.getSheetByName(CONFIG.PLANILHA_DESTINO.INFORMACOES.NOME);
-  if (!abaInfo) throw new Error(`A aba de destino "${CONFIG.PLANILHA_DESTINO.INFORMACOES.NOME}" não foi encontrada.`);
+function _executarLogicaDeSincronizacaoOtimizada() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const abaInfo = ss.getSheetByName(CONFIG.PLANILHA_DESTINO.INFORMACOES.NOME);
+  if (!abaInfo) throw new Error("Aba de destino não encontrada.");
 
-  // Constrói mapa com dados (nome-> {nome, sku, ncm, gtin})
+  // 1. Lê a Origem
+  const planilhaOrigem = SpreadsheetApp.openByUrl(CONFIG.URL_ORIGEM);
   const mapaDadosOrigem = _construirMapaDeDados(planilhaOrigem);
 
-  // Lê o que já existe na aba de destino
-  const primeiraLinha = CONFIG.PLANILHA_DESTINO.INFORMACOES.PRIMEIRA_LINHA_DADOS;
-  const ultimaLinhaInfo = _encontrarUltimaLinhaNaColuna(abaInfo, 1); // coluna A
-  const larguraLeitura = 4; // A..D (SKU, Nome, NCM, GTIN)
+  // 2. Lê o Destino (CORREÇÃO AQUI: Usa a coluna B para definir o fim real, ignorando fórmulas em H:AN)
+  const startRow = CONFIG.PLANILHA_DESTINO.INFORMACOES.PRIMEIRA_LINHA_DADOS;
+  
+  // Usa a função utilitária para achar a última linha real baseada na Coluna 2 (Nome)
+  // Se houver fórmulas na linha 2000, mas nome só até a 50, ele retorna 50.
+  const lastRowReal = _encontrarUltimaLinhaNaColuna(abaInfo, 2); 
+  
+  let valoresDestino = [];
+  
+  if (lastRowReal >= startRow) {
+    // Lê colunas A até D (SKU, Nome, NCM, GTIN) somente até onde tem dados reais
+    valoresDestino = abaInfo.getRange(startRow, 1, lastRowReal - startRow + 1, 4).getValues();
+  }
 
-  const dadosExistentes =
-    (ultimaLinhaInfo >= primeiraLinha)
-      ? abaInfo.getRange(
-          primeiraLinha,
-          1,
-          (ultimaLinhaInfo - primeiraLinha + 1),
-          larguraLeitura
-        ).getValues()
-      : [];
-
-  // Mapa de existentes por nome (chave: nome normalizado)
-  const mapaExistentes = new Map();
-  dadosExistentes.forEach((linha, index) => {
-    const nomeProduto = linha[CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_NOME_INDICE_0]; // B (0-based)
-    if (nomeProduto) {
-      mapaExistentes.set(
-        String(nomeProduto).trim().toLowerCase(),
-        {
-          linha,
-          numeroLinha: CONFIG.PLANILHA_DESTINO.INFORMACOES.PRIMEIRA_LINHA_DADOS + index
-        }
-      );
-    }
-  });
-
-  // Lista de nomes para sincronizar (Acompanhamento!A3:A1001)
+  // 3. Prepara Listas
   const nomesParaSincronizar = planilhaOrigem
     .getSheetByName(CONFIG.ABAS_ORIGEM.ACOMPANHAMENTO.NOME)
     .getRange(CONFIG.ABAS_ORIGEM.ACOMPANHAMENTO.INTERVALO_NOMES)
@@ -115,96 +57,75 @@ function _executarLogicaDeSincronizacao() {
     .map(n => String(n || '').trim())
     .filter(n => n);
 
-  const produtosParaAdicionar = [];
-  const produtosParaAtualizar = [];
+  const novosItens = [];
+  let contAtualizados = 0;
+  
+  // Índices base-0 da matriz lida (A=0, B=1, C=2, D=3)
+  const I_SKU = 0; 
+  const I_NOME = 1; 
+  const I_NCM = 2; 
+  const I_GTIN = 3;
 
-  // Decide adicionar/atualizar
-  for (const nome of nomesParaSincronizar) {
-    const dadosOrigem = mapaDadosOrigem.get(nome); // chave exatamente como no mapa (nome “limpo” com trim)
-    if (!dadosOrigem) {
-      console.warn(`Produto "${nome}" listado no Acompanhamento mas não encontrado nas abas de dados.`);
-      continue;
-    }
+  // Mapa para busca rápida no destino (Nome -> Índice do Array)
+  const mapaDestinoIndices = new Map();
+  valoresDestino.forEach((row, idx) => {
+    const nomeKey = String(row[I_NOME] || '').trim().toLowerCase();
+    if (nomeKey) mapaDestinoIndices.set(nomeKey, idx);
+  });
+
+  // 4. Processamento Lógico
+  nomesParaSincronizar.forEach(nome => {
+    const dadosNovos = mapaDadosOrigem.get(nome);
+    if (!dadosNovos) return;
 
     const chave = String(nome).trim().toLowerCase();
-    if (mapaExistentes.has(chave)) {
-      // atualizar somente campos “FALTANDO”
-      const existente = mapaExistentes.get(chave);
-      const linha = existente.linha;
+    
+    if (mapaDestinoIndices.has(chave)) {
+      // --- ATUALIZAR ---
+      const idxArr = mapaDestinoIndices.get(chave);
+      const linha = valoresDestino[idxArr];
+      let mudou = false;
 
-      const precisaAtualizar = (
-        (String(linha[CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_SKU_INDICE_0]  || '').toUpperCase()  === 'FALTANDO' && String(dadosOrigem.sku  || '').toUpperCase()  !== 'FALTANDO') ||
-        (String(linha[CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_NCM_INDICE_0]  || '').toUpperCase()  === 'FALTANDO' && String(dadosOrigem.ncm  || '').toUpperCase()  !== 'FALTANDO') ||
-        (String(linha[CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_GTIN_INDICE_0] || '').toUpperCase()  === 'FALTANDO' && String(dadosOrigem.gtin || '').toUpperCase() !== 'FALTANDO')
-      );
+      const ehFaltando = (v) => String(v || '').toUpperCase() === 'FALTANDO' || v === '';
+      const temValor = (v) => String(v || '').toUpperCase() !== 'FALTANDO' && v !== '';
 
-      if (precisaAtualizar) {
-        produtosParaAtualizar.push({
-          numeroLinha: existente.numeroLinha,
-          dadosNovos: dadosOrigem
-        });
-      }
+      if (ehFaltando(linha[I_SKU]) && temValor(dadosNovos.sku)) { linha[I_SKU] = dadosNovos.sku; mudou = true; }
+      if (ehFaltando(linha[I_NCM]) && temValor(dadosNovos.ncm)) { linha[I_NCM] = dadosNovos.ncm; mudou = true; }
+      if (ehFaltando(linha[I_GTIN]) && temValor(dadosNovos.gtin)) { linha[I_GTIN] = dadosNovos.gtin; mudou = true; }
+
+      if (mudou) contAtualizados++;
     } else {
-      // adicionar novo
-      produtosParaAdicionar.push(dadosOrigem);
+      // --- ADICIONAR NOVO ---
+      novosItens.push([dadosNovos.sku, dadosNovos.nome, dadosNovos.ncm, dadosNovos.gtin]);
     }
+  });
+
+  // 5. Gravação em Lote
+  
+  // A) Atualizações (Reescreve o bloco existente)
+  if (contAtualizados > 0 && valoresDestino.length > 0) {
+    abaInfo.getRange(startRow, 1, valoresDestino.length, 4).setValues(valoresDestino);
   }
 
-  // Atualiza existentes (apenas os campos que estavam “FALTANDO”)
-  if (produtosParaAtualizar.length > 0) {
-    produtosParaAtualizar.forEach(item => {
-      const r = item.dadosNovos;
-      const row = item.numeroLinha;
-      // A: SKU
-      if (String(r.sku || '').toUpperCase() !== 'FALTANDO') {
-        abaInfo.getRange(row, CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_SKU_INDICE_0 + 1).setValue(r.sku);
-      }
-      // C: NCM
-      if (String(r.ncm || '').toUpperCase() !== 'FALTANDO') {
-        abaInfo.getRange(row, CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_NCM_INDICE_0 + 1).setValue(r.ncm);
-      }
-      // D: GTIN
-      if (String(r.gtin || '').toUpperCase() !== 'FALTANDO') {
-        abaInfo.getRange(row, CONFIG.PLANILHA_DESTINO.INFORMACOES.COL_GTIN_INDICE_0 + 1).setValue(r.gtin);
-      }
-    });
+  // B) Novos (Append IMEDIATAMENTE após a última linha real de dados)
+  if (novosItens.length > 0) {
+    const nextRow = (lastRowReal < startRow) ? startRow : lastRowReal + 1;
+    abaInfo.getRange(nextRow, 1, novosItens.length, 4).setValues(novosItens);
   }
 
-  // Adiciona novos (somente A..D). Não escreve F/G.
-  if (produtosParaAdicionar.length > 0) {
-    const proximaLinha = _encontrarUltimaLinhaNaColuna(abaInfo, 1) + 1;
-    const dadosAteD = produtosParaAdicionar.map(d => [d.sku, d.nome, d.ncm, d.gtin]); // A..D
-    abaInfo.getRange(proximaLinha, 1, dadosAteD.length, 4).setValues(dadosAteD);
-  }
-
-  return {
-    adicionados: produtosParaAdicionar.length,
-    atualizados: produtosParaAtualizar.length
-  };
+  return { adicionados: novosItens.length, atualizados: contAtualizados };
 }
 
-// =================================================================================
-// Bloco 3: Leitura da planilha de origem (consolidado)
-// =================================================================================
-
-/**
- * Lê todas as abas listadas em CONFIG.ABAS_ORIGEM.DADOS.NOMES e consolida em um mapa por “Nome” (coluna A).
- * @param {Spreadsheet} planilhaOrigem
- * @returns {Map<string, {nome:string, sku:string, ncm:string, gtin:string}>}
- */
 function _construirMapaDeDados(planilhaOrigem) {
   const mapa = new Map();
   const abasDeDados = CONFIG.ABAS_ORIGEM.DADOS.NOMES;
-
   for (const nomeAba of abasDeDados) {
     const aba = planilhaOrigem.getSheetByName(nomeAba);
     if (!aba) continue;
-
     const nomes = aba.getRange(CONFIG.ABAS_ORIGEM.DADOS.INTERVALO_NOMES_PRODUTOS).getValues().flat();
     const skus  = aba.getRange(CONFIG.ABAS_ORIGEM.DADOS.INTERVALO_SKU).getValues().flat();
     const ncms  = aba.getRange(CONFIG.ABAS_ORIGEM.DADOS.INTERVALO_NCM).getValues().flat();
     const gtins = aba.getRange(CONFIG.ABAS_ORIGEM.DADOS.INTERVALO_GTIN).getValues().flat();
-
     for (let i = 0; i < nomes.length; i++) {
       const nome = String(nomes[i] || '').trim();
       if (!nome) continue;
