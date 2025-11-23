@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+  <head>
+    <base target="_top">
+    <?!= incluir('EstilosPainel.html'); ?>
+  </head>
+  <body>
+    <div class="section" id="status-section">
+      <h2 style="display:flex; align-items:center; gap:8px;">
+        Status da Automação
+        <button id="btn-refresh-status" class="btn-icon-sm" title="Atualizar status">↻</button>
+      </h2>
+      <div id="status-content">
+        <p><strong>Status:</strong> <span id="status-value">--</span></p>
+        <p><strong>Resultado:</strong> <span id="status-result">--</span></p>
+        <p><strong>Verificação:</strong> <span id="status-timestamp">--</span></p>
+      </div>
+    </div>
+
+    <div class="section" id="actions-section">
+      <h2>Ferramentas</h2>
+      <div class="actions-grid">
+        <button id="btn-manual" class="btn btn-primary">▶️ Gerar Arquivos Manuais</button>
+        <button id="btn-gerenciar" class="btn btn-secondary">🗂️ Gerenciar Arquivos</button>
+      </div>
+      <p class="muted" style="margin-top:10px;">Dica: você pode gerar os arquivos e gerenciá-los em seguida — o painel acima reflete o último processo executado.</p>
+    </div>
+
+    <div class="section" id="sync-section">
+      <h2>Sincronização Manual</h2>
+      <button id="sync-button" class="btn btn-ghost">🔄 Sincronizar Novos Produtos Agora</button>
+    </div>
+
+    <!-- Últimos Arquivos (já existente) -->
+    <div class="section" id="recent-files-section">
+      <h2 style="display:flex; align-items:center; gap:8px;">
+        Últimos Arquivos
+        <button id="btn-refresh-files" class="btn-icon-sm" title="Atualizar lista">↻</button>
+      </h2>
+      <ul id="panel-files-list" class="mini-list" style="margin-top:10px;">
+        <li><span class="muted">Carregando...</span></li>
+      </ul>
+    </div>
+
+    <script>
+      const fetchStatus = () => {
+        google.script.run.withSuccessHandler(atualizarPainel).obterDadosDoPainel();
+      };
+
+      document.getElementById('btn-manual').addEventListener('click', () => {
+        google.script.run.iniciarGeracaoManual();
+      });
+
+      document.getElementById('btn-gerenciar').addEventListener('click', () => google.script.run.abrirGerenciadorDeArquivos());
+
+      document.getElementById('sync-button').addEventListener('click', function() {
+        this.textContent = "Sincronizando...";
+        this.disabled = true;
+        google.script.run
+          .withSuccessHandler(() => {
+              this.textContent = "🔄 Sincronizar Novos Produtos Agora";
+              this.disabled = false;
+              fetchStatus(); // atualiza status ao final
+          })
+          .withFailureHandler(error => {
+            alert('Erro na sincronização: ' + error.message);
+            this.textContent = "🔄 Sincronizar Novos Produtos Agora";
+            this.disabled = false;
+            fetchStatus();
+          })
+          .importarDadosEConsultarAbas();
+      });
+
+      function atualizarPainel(dados) {
+        if (dados && !dados.error) {
+          const statusEl = document.getElementById('status-value');
+          statusEl.textContent = dados.status || '--';
+          statusEl.className = (String(dados.status||'').includes('Erro')) ? 'error' : 'success';
+          document.getElementById('status-result').textContent = dados.resultado || '--';
+          document.getElementById('status-timestamp').textContent = dados.timestamp || '--';
+        }
+      }
+
+      // === Mini-lista (já estava manual com ↻) ===
+      function renderArquivosPainel(payload){
+        const ul = document.getElementById('panel-files-list');
+        if (!payload || !Array.isArray(payload.arquivos) || payload.arquivos.length === 0) {
+          ul.innerHTML = '<li><span class="muted">Nenhum arquivo recente.</span></li>';
+          return;
+        }
+        ul.innerHTML = payload.arquivos.map(item => `
+          <li>
+            <div class="mini-file">
+              <span>${item.nomeCurto}</span>
+              <span class="meta">${item.timestamp || ''}</span>
+            </div>
+            <a href="${item.downloadUrl}" target="_blank" title="Baixar .xlsx" style="text-decoration:none;">⬇️</a>
+          </li>
+        `).join('');
+      }
+
+      function carregarArquivosPainel(){
+        const btn = document.getElementById('btn-refresh-files');
+        if (btn) { btn.disabled = true; setTimeout(() => btn.disabled = false, 800); }
+        const ul = document.getElementById('panel-files-list');
+        ul.innerHTML = '<li><span class="muted">Carregando...</span></li>';
+        google.script.run
+          .withSuccessHandler(renderArquivosPainel)
+          .withFailureHandler(err => {
+            ul.innerHTML = '<li><span class="muted">Erro ao carregar: ' + (err && err.message ? err.message : String(err)) + '</span></li>';
+          })
+          .obterUltimosArquivosParaPainel(5);
+      }
+
+      // Botões de atualizar
+      document.getElementById('btn-refresh-status').addEventListener('click', fetchStatus);
+      document.getElementById('btn-refresh-files').addEventListener('click', carregarArquivosPainel);
+
+      // Carregamentos iniciais (sem polling)
+      document.addEventListener('DOMContentLoaded', function() {
+        fetchStatus();
+        carregarArquivosPainel();
+      });
+    </script>
+  </body>
+</html>
