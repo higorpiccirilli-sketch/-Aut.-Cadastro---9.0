@@ -99,4 +99,4 @@ IDs de pastas e planilhas devem ser configurados no objeto `CONFIG` em `Config.g
 
 ---
 
-**Autor:** [Seu Nome]
+**Autor:** Higor e IA
