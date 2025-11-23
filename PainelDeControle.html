@@ -23,7 +23,7 @@
         <button id="btn-manual" class="btn btn-primary">▶️ Gerar Arquivos Manuais</button>
         <button id="btn-gerenciar" class="btn btn-secondary">🗂️ Gerenciar Arquivos</button>
       </div>
-      <p class="muted" style="margin-top:10px;">Dica: você pode gerar os arquivos e gerenciá-los em seguida — o painel acima reflete o último processo executado.</p>
+      <p class="muted" style="margin-top:10px;">Dica: Gere os arquivos e gerencie-os abaixo.</p>
     </div>
 
     <div class="section" id="sync-section">
@@ -31,7 +31,6 @@
       <button id="sync-button" class="btn btn-ghost">🔄 Sincronizar Novos Produtos Agora</button>
     </div>
 
-    <!-- Últimos Arquivos (já existente) -->
     <div class="section" id="recent-files-section">
       <h2 style="display:flex; align-items:center; gap:8px;">
         Últimos Arquivos
@@ -43,33 +42,10 @@
     </div>
 
     <script>
+      // === STATUS ===
       const fetchStatus = () => {
         google.script.run.withSuccessHandler(atualizarPainel).obterDadosDoPainel();
       };
-
-      document.getElementById('btn-manual').addEventListener('click', () => {
-        google.script.run.iniciarGeracaoManual();
-      });
-
-      document.getElementById('btn-gerenciar').addEventListener('click', () => google.script.run.abrirGerenciadorDeArquivos());
-
-      document.getElementById('sync-button').addEventListener('click', function() {
-        this.textContent = "Sincronizando...";
-        this.disabled = true;
-        google.script.run
-          .withSuccessHandler(() => {
-              this.textContent = "🔄 Sincronizar Novos Produtos Agora";
-              this.disabled = false;
-              fetchStatus(); // atualiza status ao final
-          })
-          .withFailureHandler(error => {
-            alert('Erro na sincronização: ' + error.message);
-            this.textContent = "🔄 Sincronizar Novos Produtos Agora";
-            this.disabled = false;
-            fetchStatus();
-          })
-          .importarDadosEConsultarAbas();
-      });
 
       function atualizarPainel(dados) {
         if (dados && !dados.error) {
@@ -81,20 +57,46 @@
         }
       }
 
-      // === Mini-lista (já estava manual com ↻) ===
+      // === AÇÕES ===
+      document.getElementById('btn-manual').addEventListener('click', () => google.script.run.iniciarGeracaoManual());
+      document.getElementById('btn-gerenciar').addEventListener('click', () => google.script.run.abrirGerenciadorDeArquivos());
+
+      document.getElementById('sync-button').addEventListener('click', function() {
+        this.textContent = "Sincronizando...";
+        this.disabled = true;
+        google.script.run
+          .withSuccessHandler(() => {
+              this.textContent = "🔄 Sincronizar Novos Produtos Agora";
+              this.disabled = false;
+              fetchStatus();
+          })
+          .withFailureHandler(error => {
+            alert('Erro: ' + error.message);
+            this.textContent = "🔄 Sincronizar Novos Produtos Agora";
+            this.disabled = false;
+            fetchStatus();
+          })
+          .importarDadosEConsultarAbas();
+      });
+
+      // === LISTA DE ARQUIVOS (LINKS CLICÁVEIS) ===
       function renderArquivosPainel(payload){
         const ul = document.getElementById('panel-files-list');
         if (!payload || !Array.isArray(payload.arquivos) || payload.arquivos.length === 0) {
           ul.innerHTML = '<li><span class="muted">Nenhum arquivo recente.</span></li>';
           return;
         }
+        
         ul.innerHTML = payload.arquivos.map(item => `
           <li>
             <div class="mini-file">
-              <span>${item.nomeCurto}</span>
-              <span class="meta">${item.timestamp || ''}</span>
+              <a href="${item.url}" target="_blank" title="Abrir no Google Drive" 
+                 style="color: inherit; text-decoration: none; border-bottom: 1px dotted var(--muted); display:inline-block;">
+                 ${item.nomeCurto} ↗
+              </a>
+              <span class="meta">${item.timestamp}</span>
             </div>
-            <a href="${item.downloadUrl}" target="_blank" title="Baixar .xlsx" style="text-decoration:none;">⬇️</a>
+            <a href="${item.downloadUrl}" target="_blank" title="Baixar .xlsx direto" style="text-decoration:none; font-size:1.2em;">⬇️</a>
           </li>
         `).join('');
       }
@@ -102,21 +104,21 @@
       function carregarArquivosPainel(){
         const btn = document.getElementById('btn-refresh-files');
         if (btn) { btn.disabled = true; setTimeout(() => btn.disabled = false, 800); }
+        
         const ul = document.getElementById('panel-files-list');
         ul.innerHTML = '<li><span class="muted">Carregando...</span></li>';
+        
         google.script.run
           .withSuccessHandler(renderArquivosPainel)
           .withFailureHandler(err => {
-            ul.innerHTML = '<li><span class="muted">Erro ao carregar: ' + (err && err.message ? err.message : String(err)) + '</span></li>';
+             ul.innerHTML = '<li><span class="muted">Erro ao carregar lista.</span></li>';
           })
           .obterUltimosArquivosParaPainel(5);
       }
 
-      // Botões de atualizar
       document.getElementById('btn-refresh-status').addEventListener('click', fetchStatus);
       document.getElementById('btn-refresh-files').addEventListener('click', carregarArquivosPainel);
 
-      // Carregamentos iniciais (sem polling)
       document.addEventListener('DOMContentLoaded', function() {
         fetchStatus();
         carregarArquivosPainel();
