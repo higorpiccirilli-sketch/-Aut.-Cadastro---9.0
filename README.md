@@ -1,75 +1,86 @@
-# Automação de Gestão de Produtos e Exportação Omie (Google Apps Script)
+# 🚀 Automação de Gestão e Importação de Produtos - Omie ERP
 
-Este projeto é um sistema de automação desenvolvido em **Google Apps Script** para gerenciar o cadastro de produtos em uma planilha Google Sheets e automatizar a geração de arquivos de importação (`.xlsx`) compatíveis com o ERP **Omie**.
+Este projeto é uma solução robusta desenvolvida em **Google Apps Script** para automatizar o ciclo de vida do cadastro de produtos, desde a sincronização de dados brutos até a geração de arquivos `.xlsx` validados para importação no **ERP Omie** (sistema de gestão brasileiro).
 
-## 🚀 Funcionalidades Principais
+O sistema resolve o problema de manipulação manual de planilhas, garantindo integridade de dados (SKU, NCM, GTIN), evitando duplicidades e organizando automaticamente os arquivos no Google Drive.
 
-### 1. Sincronização de Dados
-- **Importação Automática:** Conecta-se a uma planilha de origem externa.
-- **Detecção de Novos Produtos:** Identifica produtos novos listados na origem e os adiciona à base de dados local.
-- **Atualização Inteligente:** Atualiza apenas campos específicos (SKU, NCM, GTIN) que estejam marcados como "FALTANDO", preservando dados já preenchidos manualmente.
+## 🎯 Objetivo Principal
+
+Gerar planilhas modelos de importação para o **ERP Omie** de forma automática, segmentada por marca (Petiko, Paws, Innova) e validada, reduzindo drasticamente o tempo operacional e erros humanos no cadastro de produtos.
+
+---
+
+## 🛠️ Funcionalidades Principais
+
+### 1. Sincronização Inteligente de Dados
+- **Atualização Incremental:** O script lê uma planilha de "Origem", compara com a base local e identifica novos produtos.
+- **Preenchimento de Lacunas:** Se um produto já existe localmente mas possui dados faltantes (ex: NCM "FALTANDO"), o script atualiza apenas esse campo, preservando edições manuais anteriores.
+- **Performance:** Utiliza processamento em lote (Batch Processing) para ler e escrever milhares de linhas em segundos, minimizando chamadas à API do Google Sheets.
 
 ### 2. Exportação para Omie (.xlsx)
-- **Seleção Manual:** O usuário seleciona quais produtos deseja exportar através de caixas de seleção (Checkboxes) na planilha.
-- **Validação de Dados:** Verifica integridade de SKU, NCM e GTIN antes da exportação.
-- **Check de Duplicidade:** Impede a exportação de SKUs ou EANs duplicados.
-- **Geração de Arquivo:** Utiliza um *Template* auxiliar para gerar arquivos Excel limpos e formatados.
-- **Organização no Drive:** Salva os arquivos automaticamente em pastas organizadas por **Empresa > Ano > Mês**.
+O sistema gera arquivos Excel formatados especificamente para o layout de importação do Omie.
+- **Seleção Manual:** O usuário seleciona os itens desejados via Checkbox na planilha.
+- **Validação Rígida:** Impede a geração se campos obrigatórios (SKU, NCM) estiverem vazios.
+- **Validação Flexível:** Alerta o usuário caso existam itens sem GTIN, permitindo autorização manual.
+- **Lógica Multi-Marca:**
+  - **Arquivo Mestre (Petiko):** Contém *todos* os itens selecionados.
+  - **Arquivos Segmentados (Paws/Innova):** Gera arquivos adicionais apenas se houverem produtos dessas marcas no lote.
+- **Uso de Template:** Utiliza uma planilha "Molde" oculta para garantir que formatações, cabeçalhos e fórmulas complexas do Excel sejam preservados na exportação.
 
-### 3. Integração com Metabase
-- **Conexão API:** Conecta-se à API do Metabase para extrair relatórios atualizados (ex: Dados Box, Quantidade Box).
-- **Gestão de Sessão:** Implementa cache de token de autenticação para otimizar chamadas à API.
+### 3. Organização Automática no Drive
+- Cria automaticamente uma estrutura de pastas: `Empresa > Ano (YYYY) > Mês (MM-Nome)`.
+- Nomenclatura padronizada: `SEQUENCIAL_MARCA_DATA_HORA.xlsx` (ex: `05_Innova_23-11-2025_14-30-00.xlsx`).
 
-### 4. Interface de Usuário (Frontend)
-- **Painel Lateral:** Sidebar HTML para controle rápido das funções.
-- **Logs em Tempo Real:** Modal para acompanhamento visual do progresso das execuções.
-- **Gerenciador de Arquivos:** Interface para listar e baixar os últimos arquivos gerados diretamente da planilha.
-
----
-
-## 🛠️ Arquitetura do Projeto
-
-O código está modularizado para facilitar a manutenção e seguir boas práticas (Separation of Concerns):
-
-*   `Config.gs`: Centraliza IDs de planilhas, pastas do Drive, URLs e mapeamento de colunas. Nenhuma configuração "hardcoded" fica nos scripts lógicos.
-*   `Sincronizacao.gs`: Lógica para ler a planilha de origem e atualizar a base local.
-*   `Exportacao.gs`: Lógica de validação, preparação de dados e geração do arquivo `.xlsx` via Template.
-*   `Metabase.gs`: Cliente HTTP para autenticação e consulta à API do Metabase.
-*   `InterfaceBackend.gs`: Controladores que ligam o HTML ao Google Apps Script.
-*   `Utilitarios.gs`: Funções auxiliares (logs, formatação de data, busca de última linha).
+### 4. Interface e Gestão (Frontend)
+- **Painel Lateral (Sidebar):** Controle central para disparar sincronizações e exportações.
+- **Logs Detalhados:** Registro histórico de cada item exportado (incluindo NCM e Link direto).
+- **Gerenciador de Arquivos (Lixeira):** Funcionalidade personalizada no Menu para mover arquivos gerados para a Lixeira do Drive e marcar visualmente (riscado) no log da planilha.
 
 ---
 
-## ⚙️ Configuração
+## 🧩 Arquitetura do Projeto
 
-Para rodar este projeto, é necessário configurar as **Script Properties** (Propriedades do Script) no editor do Google Apps Script com as seguintes chaves (para segurança):
+O código segue princípios de **Clean Code** e **Separação de Responsabilidades**:
 
-*   `MB_URL`: URL base do Metabase.
-*   `MB_USER`: Usuário do Metabase.
-*   `MB_PASS`: Senha do Metabase.
-*   `ALERT_EMAIL`: E-mail para receber alertas de erro.
+| Arquivo | Responsabilidade |
+| :--- | :--- |
+| `Config.gs` | Centraliza IDs (Planilhas, Drive), URLs e mapeamento de colunas. Nenhuma configuração fica "hardcoded" na lógica. |
+| `Sincronizacao.gs` | Lógica de leitura da origem, comparação de dados em memória e atualização em lote da base local. |
+| `Exportacao.gs` | "Coração" do sistema. Valida dados, gerencia duplicidades, manipula o Template externo e salva no Drive. |
+| `InterfaceBackend.gs` | Camada de comunicação entre o HTML (Sidebar/Modais) e o Google Apps Script. |
+| `Utilitarios.gs` | Funções helpers reutilizáveis (busca de última linha otimizada, logs, formatação de data). |
+| `PainelDeControle.html` | Interface gráfica do usuário (Sidebar). |
 
-Além disso, o arquivo `Config.gs` deve ser ajustado com os IDs das suas planilhas e pastas do Google Drive.
+---
+
+## ⚙️ Fluxo de Exportação (Deep Dive)
+
+Para garantir que o arquivo final funcione no Omie e mantenha as fórmulas auxiliares, o script executa o seguinte pipeline:
+
+1.  **Staging Local:** Limpa abas auxiliares (`Omie_Produtos`) na planilha atual e cola os dados brutos (SKU, Nome, etc.).
+2.  **Cálculo:** Força o Google Sheets a recalcular fórmulas nessas abas auxiliares (ex: concatenações ou tratamentos de string necessários para o ERP).
+3.  **Template Externo:** Abre uma planilha Template separada (ID fixo).
+4.  **Deep Clean:** Limpa completamente a área de dados do Template.
+5.  **Transferência:** Copia os valores calculados (Value-only) do Staging Local para o Template.
+6.  **Exportação:** Usa a API de Drive (`UrlFetchApp`) para baixar o Template preenchido como binário `.xlsx`.
+7.  **Salvamento:** Salva o arquivo na pasta correta do Drive e registra no Log.
+
+---
 
 ## 💻 Tecnologias Utilizadas
 
-*   **Google Apps Script (GAS):** Backend Serverless baseado em JavaScript (V8 Runtime).
-*   **Google Sheets API:** Manipulação de células e abas.
-*   **Google Drive API:** Criação e organização de pastas/arquivos.
-*   **UrlFetchApp:** Requisições HTTP externas (API Metabase e Download de Blob).
-*   **HTML Service:** Criação de interfaces gráficas dentro do Sheets.
+*   **Google Apps Script (GAS):** Backend Serverless (V8 Runtime).
+*   **Google Sheets API:** Manipulação avançada de células e abas.
+*   **Google Drive API:** Gestão de sistema de arquivos e permissões.
+*   **HTML5 / CSS3:** Construção do Painel Lateral e Modais de alerta.
 
 ---
 
-## 📝 Como Usar
+## ⚠️ Requisitos
 
-1.  Abra a planilha de gestão.
-2.  Acesse o menu customizado **"▶️ Painel de Controle"**.
-3.  **Para Sincronizar:** Clique em "Sincronizar Manualmente" para puxar novos produtos.
-4.  **Para Exportar:**
-    *   Marque a caixa de seleção (Coluna F) dos produtos desejados.
-    *   No painel, clique em "Gerar Arquivos Manuais".
-    *   Aguarde o processamento e o link de download aparecerá no Log.
+*   Conta Google Workspace ou Gmail.
+*   Acesso às planilhas de Origem e Destino configuradas no `Config.gs`.
+*   Planilha Template de Importação Omie hospedada no Google Drive.
 
 ---
 
