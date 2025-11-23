@@ -17,9 +17,9 @@ const RELATORIOS = [
 // =================== FALLBACK DE SEGREDOS (apenas p/ evitar travar) ===================
 const DEFAULT_SECRETS = {
   MB_URL: 'https://bi.petiko.com.br',
-  MB_USER: 'higor-piccirilli@petiko.com.br',
-  MB_PASS: 'Euquerojogarwow1',
-  ALERT_EMAIL: 'higor-piccirilli@petiko.com.br'
+  MB_USER: '',
+  MB_PASS: '',
+  ALERT_EMAIL: ''
 };
 
 // =================== SEGREDOS (Script Properties) ===================
