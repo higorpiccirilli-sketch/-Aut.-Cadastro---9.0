@@ -1,31 +1,11 @@
 /***********************************************************************************************************************************
- *
- * SUGESTÃO DE NOME PARA O ARQUIVO: InterfaceBackend.gs
- *
+ * ARQUIVO: InterfaceBackend.gs
  ***********************************************************************************************************************************/
-/**
- * @version 2.4 — Gerenciador “bottom-first” + dedupe por arquivo + downloadUrl
- * - UI mínima: Painel, Log e Gerenciador
- * - Adiciona obterUltimosArquivosParaPainel(qtd)
- */
-
-
-
-
 
 function onOpen() {
-  if (typeof iniciarInterfacePrincipal === 'function') {
-    iniciarInterfacePrincipal();
-  }
-  if (typeof createMetabaseMenu === 'function') {
-    createMetabaseMenu();
-  }
+  if (typeof iniciarInterfacePrincipal === 'function') iniciarInterfacePrincipal();
+  if (typeof createMetabaseMenu === 'function') createMetabaseMenu();
 }
-
-
-
-
-
 
 function iniciarInterfacePrincipal() {
   SpreadsheetApp.getUi()
@@ -34,14 +14,49 @@ function iniciarInterfacePrincipal() {
     .addSeparator()
     .addItem('🔄 Sincronizar Manualmente', 'importarDadosEConsultarAbas')
     .addItem('🗂️ Gerenciar Arquivos', 'abrirGerenciadorDeArquivos')
+    .addSeparator()
+    .addItem('▶️ Gerar Arquivo de PRODUTOS', 'iniciarGeracaoManual')
+    .addItem('▶️ Gerar Arquivo de CARACTERÍSTICAS', 'iniciarGeracaoCaracteristicas')
+    .addSeparator()
+    .addItem('🗑️ Excluir Arquivos Selecionados (Log)', 'menuExcluirArquivos')
     .addToUi();
   exibirPainelDeControle();
 }
 
+function iniciarGeracaoCaracteristicas() {
+  try {
+    const dados = obterItensSelecionadosParaModal(); 
+    if (!dados || dados.length === 0) {
+      SpreadsheetApp.getUi().alert('Aviso', 'Selecione pelo menos um produto (Coluna H) na aba "Cadastro Petiko".', SpreadsheetApp.getUi().ButtonSet.OK);
+      return;
+    }
+    const html = HtmlService.createTemplateFromFile('ModalCaracteristicas.html');
+    html.dadosIniciais = JSON.stringify(dados); 
+    SpreadsheetApp.getUi().showModalDialog(html.evaluate().setWidth(700).setHeight(600), 'Definir Características');
+  } catch (e) {
+    SpreadsheetApp.getUi().alert('Erro: ' + e.message);
+  }
+}
+
+function processarGeracaoCaracteristicasDoFrontend(dadosDoFormulario) {
+  return executarGeracaoCaracteristicas(dadosDoFormulario);
+}
+
+function menuExcluirArquivos() {
+  const ui = SpreadsheetApp.getUi();
+  const resp = ui.alert('Lixeira do Drive', 'Tem certeza que deseja mover para a lixeira os arquivos marcados na aba "Log"?\n\n(A linha será riscada).', ui.ButtonSet.YES_NO);
+  if (resp === ui.Button.YES) {
+    try {
+      const msg = excluirArquivosSelecionados();
+      ui.alert('Resultado', msg, ui.ButtonSet.OK);
+    } catch (e) {
+      ui.alert('Erro', e.message, ui.ButtonSet.OK);
+    }
+  }
+}
+
 function exibirPainelDeControle() {
-  const html = HtmlService.createTemplateFromFile('PainelDeControle.html')
-    .evaluate()
-    .setTitle('Painel de Controle OMIE');
+  const html = HtmlService.createTemplateFromFile('PainelDeControle.html').evaluate().setTitle('Painel de Controle OMIE');
   SpreadsheetApp.getUi().showSidebar(html);
 }
 
@@ -50,232 +65,160 @@ function incluir(nomeArquivo) {
 }
 
 function iniciarGeracaoManual() {
-  const html = HtmlService.createTemplateFromFile('Log.html')
-    .evaluate()
-    .setWidth(700)
-    .setHeight(550);
+  const html = HtmlService.createTemplateFromFile('Log.html').evaluate().setWidth(700).setHeight(550);
   SpreadsheetApp.getUi().showModalDialog(html, 'Log da Exportação Manual');
 }
 
 function abrirGerenciadorDeArquivos() {
-  const html = HtmlService.createHtmlOutputFromFile('GerenciadorDeArquivos.html')
-    .setWidth(600)
-    .setHeight(500);
+  const html = HtmlService.createHtmlOutputFromFile('GerenciadorDeArquivos.html').setWidth(600).setHeight(500);
   SpreadsheetApp.getUi().showModalDialog(html, 'Gerenciador de Arquivos Exportados');
 }
 
-// -------- Painel: dados simples (sem escrever em células) ----------
+// === API DO PAINEL ===
+
 function obterDadosDoPainel() {
-  try {
-    const props = PropertiesService.getScriptProperties();
-    const status = props.getProperty('panel_status') || '--';
-    const resultado = props.getProperty('panel_result') || '--';
-    const timestamp = props.getProperty('panel_ts') || '--';
-    return { status, resultado, timestamp };
-  } catch (e) {
-    return { error: e.message };
-  }
-}
-
-// -------- Log: polling ----------
-function obterStatusDaExportacao() {
-  try {
-    return PropertiesService.getScriptProperties().getProperty('export_status');
-  } catch (e) {
-    return '[ERRO] ' + (e && e.message ? e.message : String(e));
-  }
-}
-
-// -------- Gerenciador (lê do final: últimos N únicos, dedupe por arquivo) ----------
-function obterDadosGerenciador() {
-  var result = {
-    linksPastas: { petiko: '', innova: '', paws: '' },
-    arquivosRecentes: []
+  const p = PropertiesService.getScriptProperties();
+  return {
+    status: p.getProperty('panel_status') || '--',
+    resultado: p.getProperty('panel_result') || '--',
+    timestamp: p.getProperty('panel_ts') || '--'
   };
-
-  // 1) Links das pastas
-  try {
-    var idsPastas = CONFIG.ID_PASTA_EXPORTACAO;
-    result.linksPastas = {
-      petiko: DriveApp.getFolderById(idsPastas.PETIKO).getUrl(),
-      innova: DriveApp.getFolderById(idsPastas.INNOVA).getUrl(),
-      paws:   DriveApp.getFolderById(idsPastas.PAWS).getUrl()
-    };
-  } catch (e) {
-    result.error = 'Falha ao obter links das pastas: ' + e.message;
-    return result;
-  }
-
-  // 2) Últimos arquivos no FINAL da aba LogDeArquivos (modelo append)
-  try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sh = ss.getSheetByName('LogDeArquivos');
-    if (!sh) return result;
-
-    var last = sh.getLastRow();
-    if (last <= 1) return result; // só cabeçalho
-
-    var COUNT_UNIQUE = 10;                 // queremos os 10 ARQUIVOS únicos mais recentes
-    var SCAN_RANGE   = Math.min(400, last - 1); // varre no máx. 400 linhas do fim
-    var numCols      = Math.min(6, sh.getLastColumn());
-
-    var start = Math.max(2, last - SCAN_RANGE + 1);
-    var rows  = last - start + 1;
-
-    var values   = sh.getRange(start, 1, rows, numCols).getValues();           // A..F (bruto)
-    var displays = sh.getRange(start, 1, rows, numCols).getDisplayValues();    // A..F (display)
-    var rich     = sh.getRange(start, 3, rows, 1).getRichTextValues();         // C (rich link)
-    var formulas = sh.getRange(start, 3, rows, 1).getFormulas();               // C (fórmulas)
-
-    var fromHyperlinkFormula = function (raw) {
-      var s = String(raw || '');
-      var m = s.match(/HYPERLINK\(\s*"([^"]+)"\s*[,;]/i);
-      return m ? m[1] : null;
-    };
-    var firstHttp = function (s) {
-      s = String(s || '').trim();
-      return s.startsWith('http') ? s : '';
-    };
-    var extractId = function (url) {
-      var m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (m) return m[1];
-      m = String(url || '').match(/[?&]id=([a-zA-Z0-9_-]+)/);
-      return m ? m[1] : null;
-    };
-    var toDl = function (url) {
-      var id = extractId(url);
-      return id ? ('https://drive.google.com/uc?export=download&id=' + id) : url;
-    };
-
-    var coletados = [];
-    var vistos = new Set(); // chave: fileId (ou, se não tiver, a própria URL)
-
-    // Itera de baixo pra cima: mais recentes primeiro
-    for (var i = rows - 1; i >= 0 && coletados.length < COUNT_UNIQUE; i--) {
-      var rowDisplays = displays[i];
-      var rowValues   = values[i];
-      var rt = rich[i] && rich[i][0];
-      var fm = formulas[i] && formulas[i][0];
-
-      var ts   = rowDisplays[0]; // A
-      var nome = rowDisplays[1]; // B
-
-      var url = (rt && rt.getLinkUrl())
-             || fromHyperlinkFormula(fm)
-             || firstHttp(rowDisplays[2])
-             || firstHttp(rowValues[2]);
-
-      if (!url) continue;
-
-      var id = extractId(url);
-      var key = id ? id : url; // preferimos dedupe por fileId
-      if (vistos.has(key)) continue;
-      vistos.add(key);
-
-      coletados.push({
-        timestamp: ts,
-        nome: nome,
-        url: url,
-        downloadUrl: toDl(url)
-      });
-    }
-
-    result.arquivosRecentes = coletados;
-    return result;
-  } catch (e2) {
-    result.error = 'Falha ao obter arquivos recentes: ' + e2.message;
-    return result;
-  }
 }
 
-/**
- * NOVO: Retorna os últimos N ARQUIVOS únicos para o Painel (nome curto + download).
- * Estrutura: { arquivos: [{nomeCurto, url, downloadUrl, timestamp}] }
- */
+function obterStatusDaExportacao() {
+  return PropertiesService.getScriptProperties().getProperty('export_status');
+}
+
+function obterDadosGerenciador() {
+  const ids = CONFIG.ID_PASTA_EXPORTACAO;
+  const links = {
+    petiko: DriveApp.getFolderById(ids.PETIKO).getUrl(),
+    innova: DriveApp.getFolderById(ids.INNOVA).getUrl(),
+    paws: DriveApp.getFolderById(ids.PAWS).getUrl()
+  };
+  const arqs = _lerLogDeArquivos(10); 
+  return { linksPastas: links, arquivosRecentes: arqs };
+}
+
 function obterUltimosArquivosParaPainel(qtd) {
-  var res = { arquivos: [] };
+  return { arquivos: _lerLogDeArquivos(qtd || 5) };
+}
+
+// === CORREÇÃO AQUI: IGNORAR CHECKBOX VAZIO ===
+function _lerLogDeArquivos(qtdLimite) {
   try {
-    var ss = SpreadsheetApp.getActiveSpreadsheet();
-    var sh = ss.getSheetByName('LogDeArquivos');
-    if (!sh) return res;
+    const ss = SpreadsheetApp.getActiveSpreadsheet();
+    const sh = ss.getSheetByName('Log'); 
+    if (!sh) return [];
+    
+    // CORREÇÃO: Usa a coluna A (1) para achar a ultima linha REAL
+    // Em vez de sh.getLastRow() que pegaria até a linha 1000 por causa dos checkboxes
+    const last = _encontrarUltimaLinhaNaColuna(sh, 1);
+    
+    if (last <= 1) return [];
 
-    var last = sh.getLastRow();
-    if (last <= 1) return res;
+    const start = Math.max(2, last - 200); 
+    const rows = last - start + 1;
+    const data = sh.getRange(start, 1, rows, 3).getValues(); // Lê A, B, C
+    
+    const itens = [];
+    const vistos = new Set();
+    
+    for (let i = data.length - 1; i >= 0 && itens.length < qtdLimite; i--) {
+      const row = data[i];
+      const ts = row[0];
+      const nome = String(row[1] || '');
+      const url = String(row[2] || '');
+      
+      if (!url || !url.startsWith('http')) continue;
+      if (vistos.has(url)) continue;
+      vistos.add(url);
 
-    var COUNT_UNIQUE = Math.max(1, Math.min(Number(qtd) || 5, 10));
-    var SCAN_RANGE   = Math.min(400, last - 1);
-    var numCols      = Math.min(6, sh.getLastColumn());
+      let nomeCurto = nome;
+      // Ajuste para exibir "Caracteristica" ou "05_Grupo" bonitinho
+      const match = nome.match(/^([0-9]+)_([^_]+)/); 
+      
+      if (match) {
+        nomeCurto = `${match[1]}_${match[2]}`; 
+      } else if (nome.toLowerCase().includes('caracteristica')) {
+        nomeCurto = "Caracteristica";
+      } else {
+        if (nome.length > 20) nomeCurto = nome.substring(0, 20) + '...';
+      }
+      
+      nomeCurto = nomeCurto.replace('.xlsx', '');
 
-    var start = Math.max(2, last - SCAN_RANGE + 1);
-    var rows  = last - start + 1;
-
-    var values   = sh.getRange(start, 1, rows, numCols).getValues();
-    var displays = sh.getRange(start, 1, rows, numCols).getDisplayValues();
-    var rich     = sh.getRange(start, 3, rows, 1).getRichTextValues();
-    var formulas = sh.getRange(start, 3, rows, 1).getFormulas();
-
-    var fromHyperlinkFormula = function (raw) {
-      var s = String(raw || '');
-      var m = s.match(/HYPERLINK\(\s*"([^"]+)"\s*[,;]/i);
-      return m ? m[1] : null;
-    };
-    var firstHttp = function (s) {
-      s = String(s || '').trim();
-      return s.startsWith('http') ? s : '';
-    };
-    var extractId = function (url) {
-      var m = String(url || '').match(/\/d\/([a-zA-Z0-9_-]+)/);
-      if (m) return m[1];
-      m = String(url || '').match(/[?&]id=([a-zA-Z0-9_-]+)/);
-      return m ? m[1] : null;
-    };
-    var toDl = function (url) {
-      var id = extractId(url);
-      return id ? ('https://drive.google.com/uc?export=download&id=' + id) : url;
-    };
-    var nomeCurto = function (nomeCheio) {
-      var base = String(nomeCheio || '').replace(/\.[^.]+$/, '');
-      var m = base.match(/^([^_]+)_([^_]+)_([^_]+)/); // MANUAL_02_Paws_...
-      if (m) return m[1] + '_' + m[2] + '_' + m[3];
-      // fallback: corta até ~24 chars
-      return base.length > 24 ? (base.slice(0, 24) + '…') : base;
-    };
-
-    var itens = [];
-    var vistos = new Set();
-
-    for (var i = rows - 1; i >= 0 && itens.length < COUNT_UNIQUE; i--) {
-      var rowDisplays = displays[i];
-      var rowValues   = values[i];
-      var rt = rich[i] && rich[i][0];
-      var fm = formulas[i] && formulas[i][0];
-
-      var ts   = rowDisplays[0];  // A
-      var nome = rowDisplays[1];  // B
-
-      var url = (rt && rt.getLinkUrl())
-             || fromHyperlinkFormula(fm)
-             || firstHttp(rowDisplays[2])
-             || firstHttp(rowValues[2]);
-      if (!url) continue;
-
-      var id = extractId(url);
-      var key = id ? id : url;
-      if (vistos.has(key)) continue;
-      vistos.add(key);
+      let dlUrl = url;
+      const idMatch = url.match(/\/d\/([a-zA-Z0-9_-]+)/);
+      if (idMatch) dlUrl = `https://drive.google.com/uc?export=download&id=${idMatch[1]}`;
 
       itens.push({
-        nomeCurto: nomeCurto(nome),
+        timestamp: _formatarDataSimples(ts),
+        nome: nome,
+        nomeCurto: nomeCurto,
         url: url,
-        downloadUrl: toDl(url),
-        timestamp: ts
+        downloadUrl: dlUrl
       });
     }
-
-    res.arquivos = itens;
-    return res;
+    return itens;
   } catch (e) {
-    res.error = e && e.message ? e.message : String(e);
-    return res;
+    console.error(e);
+    return [];
   }
+}
+
+function _formatarDataSimples(dateObj) {
+  try {
+    return Utilities.formatDate(new Date(dateObj), 'America/Sao_Paulo', 'dd/MM HH:mm');
+  } catch(e) { return '--'; }
+}
+
+function excluirArquivosSelecionados() {
+  const ss = SpreadsheetApp.getActiveSpreadsheet();
+  const aba = ss.getSheetByName('Log');
+  if (!aba) throw new Error("Aba 'Log' não encontrada.");
+  
+  // Aqui tbm usamos a correção para não ler linhas vazias desnecessárias
+  const lastRow = _encontrarUltimaLinhaNaColuna(aba, 1);
+  if (lastRow < 2) return "O Log está vazio.";
+  
+  const rangeDados = aba.getRange(2, 1, lastRow - 1, 8);
+  const valores = rangeDados.getValues();
+  let contExcluidos = 0;
+  const linhasParaRiscar = []; 
+  const celulasCheckbox = [];  
+  for (let i = 0; i < valores.length; i++) {
+    const isChecked = valores[i][7]; 
+    const url = valores[i][2];       
+    const linhaAbsoluta = i + 2;
+    if (isChecked === true) {
+      try {
+        const fileId = _extrairIdParaExclusao(url);
+        if (fileId) {
+          DriveApp.getFileById(fileId).setTrashed(true);
+          contExcluidos++;
+          linhasParaRiscar.push(`A${linhaAbsoluta}:H${linhaAbsoluta}`);
+          celulasCheckbox.push(`H${linhaAbsoluta}`);
+        }
+      } catch (e) {
+        console.warn(`Erro ao excluir: ${e.message}`);
+        if (String(e.message).includes("not found") || String(e.message).includes("não encontrado")) {
+          contExcluidos++;
+          linhasParaRiscar.push(`A${linhaAbsoluta}:H${linhaAbsoluta}`);
+          celulasCheckbox.push(`H${linhaAbsoluta}`);
+        }
+      }
+    }
+  }
+  if (linhasParaRiscar.length > 0) {
+    aba.getRangeList(linhasParaRiscar).setFontLine("line-through").setFontColor("#e06c75");     
+    aba.getRangeList(celulasCheckbox).setDataValidation(null).setValue("LIXEIRA");
+  }
+  if (contExcluidos === 0) return "Nenhum arquivo selecionado ou encontrado.";
+  return `${contExcluidos} arquivo(s) movido(s) para a lixeira.`;
+}
+
+function _extrairIdParaExclusao(url) {
+  const match = String(url).match(/\/d\/([a-zA-Z0-9_-]+)/);
+  return match ? match[1] : null;
 }
