@@ -4,21 +4,144 @@
     <base target="_top">
     <link href="https://fonts.googleapis.com/css2?family=Roboto:wght@400;500;700&display=swap" rel="stylesheet">
     <style>
-      body { font-family: 'Roboto', sans-serif; background: #f4f6f8; color: #333; margin: 0; padding: 20px; }
-      h2 { font-size: 18px; color: #1a73e8; margin-top: 0; }
-      .header-actions { display: flex; justify-content: space-between; align-items: center; margin-bottom: 15px; }
-      .btn { padding: 8px 16px; border: none; border-radius: 4px; cursor: pointer; font-weight: 500; font-size: 13px; }
-      .btn-copy { background: #e8f0fe; color: #1a73e8; }
-      .btn-copy:hover { background: #d2e3fc; }
-      .btn-submit { background: #1a73e8; color: white; width: 100%; padding: 12px; font-size: 14px; margin-top: 20px; }
-      .btn-submit:hover { background: #1557b0; }
+      /* === IMPORTANDO A PALETA DO PROJETO === */
+      :root {
+        --bg: #1f232a;
+        --panel: #282c34;
+        --text: #cfd6df;
+        --muted: #9aa4b2;
+        --border: #353b45;
+        --accent: #61afef;      /* azul */
+        --accent-warm: #f39c12; /* laranja (primário) */
+        --shadow: 0 6px 20px rgba(0,0,0,.25);
+        --radius: 12px;
+      }
+
+      body { 
+        font-family: 'Roboto', sans-serif; 
+        background: var(--bg); 
+        color: var(--text); 
+        margin: 0; 
+        padding: 20px; 
+      }
+
+      h2 { 
+        font-size: 18px; 
+        color: var(--text); 
+        margin-top: 0; 
+        display: flex;
+        align-items: center;
+        gap: 8px;
+      }
       
-      .item-card { background: white; border-radius: 8px; padding: 12px; margin-bottom: 10px; box-shadow: 0 1px 3px rgba(0,0,0,0.1); display: flex; align-items: center; gap: 10px; }
+      h2::before {
+        content: "🏷️";
+        font-size: 20px;
+      }
+
+      .header-actions { 
+        display: flex; 
+        justify-content: space-between; 
+        align-items: center; 
+        margin-bottom: 20px; 
+        padding-bottom: 15px;
+        border-bottom: 1px dashed var(--border);
+      }
+
+      /* === BOTÕES (Baseado em EstilosPainel.html) === */
+      .btn { 
+        padding: 8px 16px; 
+        border: none; 
+        border-radius: 8px; 
+        cursor: pointer; 
+        font-weight: 700; 
+        font-size: 13px; 
+        transition: filter .15s ease, transform .02s ease-in;
+        box-shadow: var(--shadow);
+      }
+      .btn:active { transform: translateY(1px); }
+      .btn:hover { filter: brightness(1.1); }
+
+      /* Botão Secundário (Copiar) */
+      .btn-copy { 
+        background: #3b4352; 
+        color: #e5eaf1; 
+        border: 1px solid var(--border);
+      }
+
+      /* Botão Primário (Enviar) */
+      .btn-submit { 
+        background: var(--accent-warm); 
+        color: #1a1205; /* Texto escuro para contraste no laranja */
+        width: 100%; 
+        padding: 12px; 
+        font-size: 14px; 
+        margin-top: 20px; 
+        text-transform: uppercase;
+        letter-spacing: 0.5px;
+      }
+
+      /* === CARDS DOS ITENS === */
+      .item-card { 
+        background: var(--panel); 
+        border: 1px solid var(--border); 
+        border-radius: var(--radius); 
+        padding: 12px; 
+        margin-bottom: 10px; 
+        display: flex; 
+        align-items: center; 
+        gap: 15px; 
+        transition: border-color 0.2s;
+      }
+      
+      .item-card:hover {
+        border-color: var(--accent);
+      }
+
       .item-info { flex: 1; }
-      .sku { font-weight: bold; color: #5f6368; font-size: 12px; }
-      .nome { font-size: 14px; margin-top: 2px; }
-      .input-tema { padding: 8px; border: 1px solid #ccc; border-radius: 4px; width: 150px; font-size: 14px; }
-      .loading { text-align: center; color: #666; margin-top: 50px; display: none; }
+      
+      .sku { 
+        font-weight: bold; 
+        color: var(--accent); /* Azul para destaque do SKU */
+        font-size: 12px; 
+        margin-bottom: 4px;
+      }
+      
+      .nome { 
+        font-size: 14px; 
+        color: var(--text);
+      }
+
+      /* === INPUTS DARK === */
+      .input-tema { 
+        padding: 10px; 
+        background: #1a1d23; /* Fundo mais escuro que o painel */
+        border: 1px solid var(--border); 
+        border-radius: 6px; 
+        width: 160px; 
+        font-size: 14px; 
+        color: white;
+        outline: none;
+        transition: border-color 0.2s;
+      }
+      
+      .input-tema:focus {
+        border-color: var(--accent);
+      }
+      
+      .input-tema::placeholder {
+        color: var(--muted);
+        font-style: italic;
+      }
+
+      .loading { text-align: center; color: var(--muted); margin-top: 50px; display: none; }
+      
+      /* Scrollbar estilizada para combinar */
+      ::-webkit-scrollbar { width: 8px; }
+      ::-webkit-scrollbar-track { background: var(--bg); }
+      ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 4px; }
+      ::-webkit-scrollbar-thumb:hover { background: #555; }
+
     </style>
   </head>
   <body>
@@ -26,7 +149,7 @@
     <div id="main-content">
       <div class="header-actions">
         <h2>Definir Características</h2>
-        <button type="button" class="btn btn-copy" onclick="copiarPrimeiroTema()">⬇️ Copiar 1º Tema p/ todos</button>
+        <button type="button" class="btn btn-copy" onclick="copiarPrimeiroTema()">⬇️ Copiar 1º p/ todos</button>
       </div>
 
       <form id="form-caracteristicas">
@@ -36,21 +159,20 @@
     </div>
 
     <div id="loading-view" class="loading">
-      <p>⏳ Processando... Por favor, aguarde.</p>
+      <p style="font-size: 24px;">⏳</p>
+      <p>Processando... Por favor, aguarde.</p>
     </div>
 
     <script>
-      // === CORREÇÃO AQUI ===
-      // Recebe o array diretamente, sem JSON.parse extra
+      // Mantém a lógica original intacta
       const dadosIniciais = <?!= dadosIniciais ?>;
 
       function renderizarItens() {
         const container = document.getElementById('lista-itens');
         let html = '';
         
-        // Verificação de segurança caso venha vazio
         if (!dadosIniciais || dadosIniciais.length === 0) {
-          container.innerHTML = '<p style="text-align:center; color:red;">Nenhum dado recebido. Verifique se selecionou a Coluna H.</p>';
+          container.innerHTML = '<p style="text-align:center; color:var(--err);">⚠️ Nenhum dado recebido. Verifique a seleção.</p>';
           return;
         }
 
@@ -65,7 +187,8 @@
                      name="tema_${index}" 
                      class="input-tema" 
                      placeholder="Tema (Opcional)"
-                     data-index="${index}">
+                     data-index="${index}"
+                     autocomplete="off">
             </div>
           `;
         });
@@ -76,7 +199,12 @@
         const inputs = document.querySelectorAll('.input-tema');
         if (inputs.length > 0) {
           const valor = inputs[0].value;
-          inputs.forEach(input => input.value = valor);
+          // Efeito visual rápido para mostrar que copiou
+          inputs.forEach(input => {
+            input.value = valor;
+            input.style.borderColor = 'var(--ok)'; // pisca verde (precisaria definir var --ok ou usar cor fixa)
+            setTimeout(() => input.style.borderColor = '', 300);
+          });
         }
       }
 
